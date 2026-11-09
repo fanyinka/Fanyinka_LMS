@@ -149,8 +149,11 @@ export default function Home() {
       .order("full_name")
       .limit(2000);
 
-    if (error) setNotice(error.message);
-    else setMembers((data || []) as Member[]);
+    if (error) {
+      setNotice("Could not load members: " + error.message);
+    } else {
+      setMembers((data || []) as Member[]);
+    }
   }
 
   useEffect(() => {
@@ -160,8 +163,33 @@ export default function Home() {
   async function addMember(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!supabase || !authorized) {
-      setNotice("Please log in with an authorized account.");
+    if (!supabase) {
+      setNotice("Supabase is not configured.");
+      return;
+    }
+
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+
+    if (sessionError || !sessionData.session) {
+      setNotice("Your login session is missing. Please sign in again.");
+      return;
+    }
+
+    const { data: canAdd, error: roleError } = await supabase.rpc(
+      "has_staff_role",
+      { required_roles: ["super_admin", "secretary"] }
+    );
+
+    if (roleError) {
+      setNotice("Permission check failed: " + roleError.message);
+      return;
+    }
+
+    if (!canAdd) {
+      setNotice(
+        "Your website login is not recognized as authorized staff."
+      );
       return;
     }
 
@@ -176,15 +204,16 @@ export default function Home() {
     });
 
     if (error) {
-      setNotice(error.message);
-    } else {
-      setNotice("Member added successfully.");
-      setName("");
-      setPhone("");
-      setEmail("");
-      setShowAdd(false);
-      loadMembers();
+      setNotice("Member saving failed: " + error.message);
+      return;
     }
+
+    setNotice("Member added successfully!");
+    setName("");
+    setPhone("");
+    setEmail("");
+    setShowAdd(false);
+    await loadMembers();
   }
 
   const filtered = members.filter(m =>
